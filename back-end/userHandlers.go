@@ -94,6 +94,9 @@ func (apiCfg *apiConfig) loginUser(w http.ResponseWriter, r *http.Request) {
 		AccessToken string `json:"access_token"`
 	}
 
+	w.Header().Add("Set-Cookie", fmt.Sprintf("Authorization=Bearer %s; HttpOnly; Path=/; Max-Age=259200; SameSite=Lax", user.AccessToken))
+	w.Header().Add("Access-Control-Allow-Credentials", "true")
+
 	respondWithJSON(w, 200, response{
 		Message:     "User with given information has been found",
 		AccessToken: user.AccessToken,
