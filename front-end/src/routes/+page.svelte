@@ -1,10 +1,21 @@
 <script lang="ts">
-	import { loginUser } from '$lib/queries';
-	import type { PageData } from './$types';
+	import { getUserProfile, loginUser, registerUser } from '$lib/queries';
 
-	export let data: PageData;
+	async function handleRegisterSubmit(
+		event: SubmitEvent & {
+			currentTarget: EventTarget & HTMLFormElement;
+		}
+	) {
+		const target = event.target as HTMLFormElement;
+		const inputData = {
+			username: (target[0] as HTMLInputElement).value,
+			email: (target[1] as HTMLInputElement).value,
+			password: (target[2] as HTMLInputElement).value
+		};
+		const json = await registerUser(inputData);
+	}
 
-	async function handleSubmit(
+	async function handleLoginSubmit(
 		event: SubmitEvent & {
 			currentTarget: EventTarget & HTMLFormElement;
 		}
@@ -15,16 +26,31 @@
 			password: (target[1] as HTMLInputElement).value
 		};
 		const json = await loginUser(inputData);
-        if ("access_token" in json) {
-            document.cookie = `Authorization=Bearer ${json.access_token}; HttpOnly; Path=/; Max-Age=2592000; SameSite=None`
-        }
+	}
+
+	async function handleGetUserSubmit(
+		event: SubmitEvent & {
+			currentTarget: EventTarget & HTMLFormElement;
+		}
+	) {
+		const json = await getUserProfile();
+		console.log(json);
 	}
 </script>
 
-<h1>{data.Authorization}</h1>
-<button on:click={() => (document.cookie = 'test=cookie; HttpOnly')}>set cookies</button>
-<form on:submit|preventDefault={handleSubmit}>
+<form on:submit|preventDefault={handleRegisterSubmit}>
+	<input name="username" required />
 	<input name="email" required />
 	<input name="password" required />
+	<button type="submit">test</button>
+</form>
+
+<form on:submit|preventDefault={handleLoginSubmit}>
+	<input name="email" required />
+	<input name="password" required />
+	<button type="submit">test</button>
+</form>
+
+<form on:submit|preventDefault={handleGetUserSubmit}>
 	<button type="submit">test</button>
 </form>

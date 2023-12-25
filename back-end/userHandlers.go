@@ -51,13 +51,14 @@ func (apiCfg *apiConfig) createUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	type response struct {
-		Message     string `json:"message"`
-		AccessToken string `json:"access_token"`
+		Message string `json:"message"`
 	}
 
+	w.Header().Add("Set-Cookie", fmt.Sprintf("Authorization=Bearer %s; HttpOnly; Path=/; Max-Age=3600; SameSite=Lax", newUser.AccessToken))
+	w.Header().Add("Access-Control-Allow-Credentials", "true")
+
 	respondWithJSON(w, 201, response{
-		Message:     "Successfully created new user",
-		AccessToken: newUser.AccessToken,
+		Message: "Successfully created new user",
 	})
 }
 
@@ -80,9 +81,10 @@ func (apiCfg *apiConfig) loginUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := apiCfg.DB.GetUserByEmailAndPassword(r.Context(), database.GetUserByEmailAndPasswordParams{
-		Email:    parameters.Email,
-		Password: parameters.Password,
+	user, err := apiCfg.DB.UpdateAccessTokenAndGetUser(r.Context(), database.UpdateAccessTokenAndGetUserParams{
+		Email:                parameters.Email,
+		Password:             parameters.Password,
+		AccessTokenUpdatedAt: time.Now().UTC(),
 	})
 	if err != nil {
 		respondWithError(w, 404, "User with given email and password does not exist")
@@ -90,16 +92,14 @@ func (apiCfg *apiConfig) loginUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	type response struct {
-		Message     string `json:"message"`
-		AccessToken string `json:"access_token"`
+		Message string `json:"message"`
 	}
 
-	w.Header().Add("Set-Cookie", fmt.Sprintf("Authorization=Bearer %s; HttpOnly; Path=/; Max-Age=259200; SameSite=Lax", user.AccessToken))
+	w.Header().Add("Set-Cookie", fmt.Sprintf("Authorization=Bearer %s; HttpOnly; Path=/; Max-Age=3600; SameSite=Lax", user.AccessToken))
 	w.Header().Add("Access-Control-Allow-Credentials", "true")
 
 	respondWithJSON(w, 200, response{
-		Message:     "User with given information has been found",
-		AccessToken: user.AccessToken,
+		Message: "User with given information has been found. New token has been generated",
 	})
 }
 

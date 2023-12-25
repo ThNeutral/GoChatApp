@@ -5,19 +5,34 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/ThNeutral/messenger/internal/database"
 )
 
 type authedHandler func(http.ResponseWriter, *http.Request, database.User)
 
-func getAPIKeyFromHeader(header http.Header) (string, error) {
-	authHeaderString := header.Get("Authorization")
-	if authHeaderString == "" {
-		return "", errors.New("no authorization header data")
+func findCookieValue(cookies []*http.Cookie, value string) string {
+	for _, cookie := range cookies {
+		if cookie.Name == value {
+			return cookie.Value
+		}
+	}
+	return ""
+}
+
+func getAPIKeyFromRequest(header *http.Request) (string, error) {
+	rawCookies := header.Cookies()
+	if len(rawCookies) == 0 {
+		return "", errors.New("no cookie header data")
 	}
 
-	authHeader := strings.Split(authHeaderString, " ")
+	authCookie := findCookieValue(rawCookies, "Authorization")
+	if authCookie == "" {
+		return "", errors.New("no authorization cookie data")
+	}
+
+	authHeader := strings.Split(authCookie, " ")
 	if len(authHeader) != 2 || authHeader[0] != "Bearer" {
 		return "", errors.New("incorrect format of Authorization header. Should be Authorization: Bearer api_key")
 	}
@@ -27,7 +42,8 @@ func getAPIKeyFromHeader(header http.Header) (string, error) {
 
 func (apiCfg *apiConfig) authMiddleware(handler authedHandler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		apiKey, err := getAPIKeyFromHeader(r.Header)
+		w.Header().Add("Access-Control-Allow-Credentials", "true")
+		apiKey, err := getAPIKeyFromRequest(r)
 		if err != nil {
 			respondWithError(w, 400, fmt.Sprintf("Incorrect authorization token. Error: %v", err))
 			return
@@ -38,6 +54,16 @@ func (apiCfg *apiConfig) authMiddleware(handler authedHandler) http.HandlerFunc 
 			respondWithError(w, 404, fmt.Sprintf("No user found by this apiKey. Error: %v", err))
 			return
 		}
+
+		if user.AccessTokenUpdatedAt.Unix()+3600 < time.Now().Unix() {
+			respondWithError(w, 400, "Token has expired. To renew token, login again into app using /login-user")
+			return
+		}
+
+		apiCfg.DB.UpdateAccessTokenExpiryTimeAndGetUser(r.Context(), database.UpdateAccessTokenExpiryTimeAndGetUserParams{
+			Email:                user.Email,
+			AccessTokenUpdatedAt: time.Now().UTC(),
+		})
 
 		handler(w, r, user)
 	}
