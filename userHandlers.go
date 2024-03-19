@@ -95,7 +95,7 @@ func (apiCfg *apiConfig) loginUser(w http.ResponseWriter, r *http.Request) {
 		Message string `json:"message"`
 	}
 
-	w.Header().Add("Set-Cookie", fmt.Sprintf("Authorization=Bearer %s; HttpOnly; Path=/; Max-Age=3600; SameSite=Lax", user.AccessToken))
+	w.Header().Add("Set-Cookie", fmt.Sprintf("Authorization=Bearer %s; HttpOnly; Path=/; Max-Age=%d; SameSite=Lax", user.AccessToken, 3600*7*4))
 	w.Header().Add("Access-Control-Allow-Credentials", "true")
 
 	respondWithJSON(w, 200, response{
