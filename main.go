@@ -1,46 +1,117 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
+	"text/template"
+	"time"
 
-	"github.com/gorilla/websocket"
+	"github.com/olahol/melody"
 )
 
 const (
-	baseHTML     = "./templates/base.html"
-	homePageHTML = "./templates/homePage.html"
+	port = ":8080"
 
-	rootRoute    = "/"
-	connectRoute = "/connect"
+	rootRoute     = "/"
+	chatRoomRoute = "/chat-room"
+
+	pathToTemplates = "./templates"
+	indexHTML       = pathToTemplates + "/index.html"
+	chatRoomHTML    = pathToTemplates + "/chat-room.html"
+	messageHTML     = pathToTemplates + "/message.html"
 )
 
-var upgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool {
-		return true
-	},
-}
+var melodyInstance = melody.New()
 
-var clients = make(map[*websocket.Conn]bool)
-var broadcast = make(chan InboundMessage)
+type OutboundMessage struct {
+	Timestamp string
+	Message   string
+}
 
 type InboundMessage struct {
 	ChatMessage string `json:"chat_message"`
 }
 
-type OutboundMessage struct {
-	Content string `json:"content"`
+func handleRoot(w http.ResponseWriter, r *http.Request) {
+	log.Printf("Recieved request to %s", r.URL.Path)
+	tmpl, err := template.ParseFiles(indexHTML, chatRoomHTML)
+	if err != nil {
+		fmt.Fprint(w, "Internal Error")
+		log.Printf("Encountered error while handling %s\n" + r.URL.Path)
+		log.Printf("Error: %s\n", err.Error())
+		w.WriteHeader(500)
+	}
+
+	err = tmpl.Execute(w, nil)
+	if err != nil {
+		fmt.Fprint(w, "Internal Error")
+		log.Printf("Encountered error while handling %s\n" + r.URL.Path)
+		log.Printf("Error: %s\n", err.Error())
+		w.WriteHeader(500)
+	}
+}
+
+func handleChatRoom(w http.ResponseWriter, r *http.Request) {
+	log.Printf("Recieved request to %s", r.URL.Path)
+	err := melodyInstance.HandleRequest(w, r)
+	if err != nil {
+		fmt.Fprint(w, "Internal Error")
+		log.Printf("Encountered error while handling %s\n" + r.URL.Path)
+		log.Printf("Error: %s\n", err.Error())
+		w.WriteHeader(500)
+		return
+	}
+}
+
+func handleMessage(s *melody.Session, msg []byte) {
+	log.Print("Handling message\n")
+	tmpl, err := template.ParseFiles(messageHTML)
+	if err != nil {
+		log.Print("Encountered error while handling message broadcast\n")
+		log.Printf("Error: %s\n", err.Error())
+		return
+	}
+
+	var inbound InboundMessage
+	err = json.Unmarshal(msg, &inbound)
+	if err != nil {
+		log.Print("Encountered error while handling message broadcast\n")
+		log.Printf("Error: %s\n", err.Error())
+		return
+	}
+
+	var outbound OutboundMessage
+	var html bytes.Buffer
+	outbound.Message = inbound.ChatMessage
+	outbound.Timestamp = time.Now().Format(time.RFC850)
+
+	err = tmpl.Execute(&html, outbound)
+	if err != nil {
+		log.Print("Encountered error while handling message broadcast\n")
+		log.Printf("Error: %s\n", err.Error())
+		return
+	}
+
+	err = melodyInstance.Broadcast(html.Bytes())
+	if err != nil {
+		log.Print("Encountered error while handling message broadcast\n")
+		log.Printf("Error: %s\n", err.Error())
+		return
+	}
 }
 
 func main() {
-	http.HandleFunc(rootRoute, homePageHandler)
-	http.HandleFunc(connectRoute, handleConnections)
+	http.HandleFunc(rootRoute, handleRoot)
+	http.HandleFunc(chatRoomRoute, handleChatRoom)
 
-	go handleMessages()
+	melodyInstance.HandleMessage(handleMessage)
 
-	log.Println("Server started on 8080")
-	err := http.ListenAndServe(":8080", nil)
+	log.Printf("Listening on port %s\n", port)
+	err := http.ListenAndServe(port, nil)
 	if err != nil {
-		log.Printf("Error starting error: %s\n", err.Error())
+		log.Fatalln("ListenAndServe failed")
 	}
 }
